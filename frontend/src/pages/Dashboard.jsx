@@ -10,7 +10,6 @@ export default function Dashboard() {
     const [user, setUser] = useState(null);
     const token = localStorage.getItem("session_token");
 
-
     useEffect(() => {
         const fetchUser = async () => {
             if (!token) return;
@@ -25,6 +24,14 @@ export default function Dashboard() {
         };
 
         fetchUser();
+        console.log(user)
+    }, [token]);
+
+
+    useEffect(() => {
+        if (!user?.mb_username) return;
+
+        console.log(user?.mb_username)
 
         const fetchListens = async () => {
             const res = await axios.get(
@@ -142,7 +149,7 @@ export default function Dashboard() {
             {/*list row grid chart*/}
 
             <AlbumSection
-                title="Your Top Songs"
+                title="Your Top Albums"
                 items={topSongsListened}
                 variant="chart"
             />

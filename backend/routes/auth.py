@@ -69,4 +69,6 @@ def callback(code: str):
         (user["id"], access_token, refresh_token)
     )
 
-    return RedirectResponse("http://localhost:5173")
+    print(access_token)
+
+    return RedirectResponse("http://localhost:5173/auth?token=" + access_token)

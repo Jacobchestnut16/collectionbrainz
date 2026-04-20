@@ -15,7 +15,11 @@ export default function Layout() {
     return (
         <div>
             <nav style={{ display: "flex", gap: "15px", padding: "10px" }}>
-                <Link to="/app">Dashboard</Link>
+                <Link to="/app">CollectionBrainz</Link>
+
+                <Link>Collection</Link>
+
+                <Link>Wishlist</Link>
 
                 <form onSubmit={handleSubmit}>
                     <input

@@ -14,6 +14,7 @@ export default function Search() {
     const observer = useRef();
 
     const query = params.get("q") || "";
+    const filter = params.get("type") || "all";
 
     // sync input with URL
     useEffect(() => {
@@ -35,7 +36,8 @@ export default function Search() {
         e.preventDefault();
         const form = new FormData(e.target);
         const q = form.get("q");
-        setParams({ q });
+
+        setParams({ q, type: filter });
     }
 
     async function fetchResults(newOffset = 0, append = false) {
@@ -72,6 +74,16 @@ export default function Search() {
         if (node) observer.current.observe(node);
     };
 
+    // filtering layer
+    const filteredResults = results.filter(item => {
+        if (filter === "all") return true;
+        if (filter === "recording") return item.type === "recording";
+        if (filter === "release") return item.type === "release";
+        if (filter === "artist") return item.type === "artist";
+        if (filter === "brainz-person") return item.type === "brainz-person";
+        return true;
+    });
+
     // unified helpers
     function getTitle(item) {
         return item.title || item.name || "Unknown";
@@ -85,20 +97,27 @@ export default function Search() {
         return item.album || null;
     }
 
+    function normalizeType(type) {
+        if (type === "recording") return "song";
+        if (type === "release") return "album";
+        return type;
+    }
+
     function getCover(item) {
-        // release cover
         if (item.type === "release" && item.id) {
             return `https://coverartarchive.org/release/${item.id}/front-250`;
         }
 
-        // recording cover (if backend provides release_id)
         if (item.type === "recording" && item.release_id) {
             return `https://coverartarchive.org/release/${item.release_id}/front-250`;
         }
 
-        // artist image
         if (item.type === "artist" && item.id) {
             return `https://coverartarchive.org/artist/${item.id}/front-250`;
+        }
+
+        if (item.type === "brainz-person") {
+            return "/default-avatar.png";
         }
 
         return null;
@@ -118,12 +137,33 @@ export default function Search() {
                 <button type="submit">Search</button>
             </form>
 
+            {/* FILTERS */}
+            <div className="filters">
+                {[
+                    { key: "all", label: "All" },
+                    { key: "recording", label: "Songs" },
+                    { key: "release", label: "Albums" },
+                    { key: "artist", label: "Artists" },
+                    { key: "brainz-person", label: "People" },
+                ].map(f => (
+                    <button
+                        key={f.key}
+                        onClick={() =>
+                            setParams({ q: query, type: f.key })
+                        }
+                        className={filter === f.key ? "active" : ""}
+                    >
+                        {f.label}
+                    </button>
+                ))}
+            </div>
+
             {loading && results.length === 0 && <div>Loading...</div>}
 
             <div className="section">
                 <div className="list">
-                    {results.map((item, i) => {
-                        const isLast = i === results.length - 1;
+                    {filteredResults.map((item, i) => {
+                        const isLast = i === filteredResults.length - 1;
 
                         const cover = getCover(item);
                         const title = getTitle(item);
@@ -146,7 +186,8 @@ export default function Search() {
                                     <div className="card-sub">
                                         {artist}
                                         {album && ` • ${album}`}
-                                        {item.type && ` • ${item.type}`}
+                                        {item.type &&
+                                            ` • ${normalizeType(item.type)}`}
                                     </div>
                                 </div>
                             </div>
