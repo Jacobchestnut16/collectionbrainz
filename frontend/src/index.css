@@ -245,3 +245,13 @@ code {
   border-radius: 6px;
   object-fit: cover;
 }
+
+.card.active {
+  outline: 2px solid #b86b03;
+}
+
+.expanded-row {
+  margin: 16px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}

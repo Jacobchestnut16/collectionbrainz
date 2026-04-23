@@ -1,176 +1,110 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+
+import Viewpoint from "../components/ViewPoint.jsx";
+import { getCover } from "../utils/getCover";
 
 export default function Dashboard() {
     const [listens, setListens] = useState([]);
     const [sitewideAlbums, setSitewideAlbums] = useState([]);
     const [freshReleases, setFreshReleases] = useState([]);
-    const [topReleases, setTopReleases] = useState([]);
-    const [topSongsListened, setTopSongsListened] = useState([]);
+    const [topAlbums, setTopAlbums] = useState([]);
     const [user, setUser] = useState(null);
+
     const token = localStorage.getItem("session_token");
+    const navigate = useNavigate();
 
+    /* ---------- user ---------- */
     useEffect(() => {
-        const fetchUser = async () => {
-            if (!token) return;
+        if (!token) return;
 
-            const res = await axios.get("http://127.0.0.1:8000/me", {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            });
-
-            setUser(res.data);
-        };
-
-        fetchUser();
-        console.log(user)
+        axios
+            .get("http://127.0.0.1:8000/me", {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            .then(res => setUser(res.data));
     }, [token]);
 
-
+    /* ---------- data ---------- */
     useEffect(() => {
+
+        const base = "http://127.0.0.1:8000/dashboard";
+
+        axios.get(`${base}/sitewide/releases`)
+            .then(res => setSitewideAlbums(res.data.payload.releases.slice(0, 20)));
+
+        axios.get(`${base}/fresh-releases`)
+            .then(res => setFreshReleases(res.data.payload.releases.slice(0, 10)));
+
+        // everything that requires a logged-in user:
         if (!user?.mb_username) return;
 
-        console.log(user?.mb_username)
+        axios.get(`${base}/user/top-albums/${user.mb_username}`)
+            .then(res => setTopAlbums(res.data.payload.releases.slice(0, 10)));
 
-        const fetchListens = async () => {
-            const res = await axios.get(
-                `https://api.listenbrainz.org/1/user/${user?.mb_username}/listens`
-            );
-            setListens(res.data.payload.listens.slice(0, 10));
-        };
+        axios.get(`${base}/user/history/${user.mb_username}`)
+            .then(res => setListens(res.data.payload.listens.slice(0, 10)));
 
-        const fetchSitewideAlbums = async () => {
-            const res = await axios.get(
-                `https://api.listenbrainz.org/1/stats/sitewide/releases`
-            );
-            setSitewideAlbums(res.data.payload.releases.slice(0, 20));
-        };
-
-        const fetchFreshReleases = async () => {
-            const res = await axios.get(
-                `https://api.listenbrainz.org/1/explore/fresh-releases/`
-            );
-            setFreshReleases(res.data.payload.releases.slice(0, 10));
-        };
-
-        const fetchTopSongsListened = async () => {
-            const res = await axios.get(
-                `https://api.listenbrainz.org/1/stats/user/${user?.mb_username}/releases`
-            );
-            setTopSongsListened(res.data.payload.releases.slice(0, 10));
-        };
-
-        fetchListens();
-        fetchSitewideAlbums();
-        fetchTopSongsListened();
-        fetchFreshReleases();
     }, [user]);
 
-    function getCoverArtUrl(listen) {
-        let release_mbid =
-            listen.track_metadata?.mbid_mapping?.release_mbid;
+    /* ---------- click ---------- */
+    function handleClick(item) {
+        const artistId = item?.artist_id;
+        const rg = item?.release_group_id;
+        const release = item?.release_id;
 
-        if (!release_mbid){
-            release_mbid = listen.release_mbid;
-            if (!release_mbid) return null;
+        if (!artistId) return;
+
+        if (rg) {
+            navigate(`/artist/${artistId}?rg=${rg}`);
+        } else if (release) {
+            navigate(`/artist/${artistId}?release=${release}`);
         }
-        return `https://coverartarchive.org/release/${release_mbid}/front-250`;
-    }
-
-    function AlbumSection({ title, items = [], variant }) {
-        return (
-            <div className="section">
-                <h2>{title}</h2>
-
-                <div className={variant}>
-                    {items.map((item, i) => {
-                        const cover = getCoverArtUrl(item);
-
-                        if (variant === "chart") {
-                            return (
-                                <div key={i} className="chart-item">
-                                    <div className="chart-rank">{i + 1}</div>
-
-                                    {cover && <img src={cover} alt="" />}
-
-                                    <div>
-                                        <div className="card-title">
-                                            {item.name ||
-                                                item.release_name ||
-                                                item.track_metadata?.track_name ||
-                                                "Unknown"}
-                                        </div>
-
-                                        <div className="card-sub">
-                                            {item.artist ||
-                                                item.artist_name ||
-                                                item.track_metadata?.artist_name ||
-                                                item.artist_credit_name ||
-                                                "Unknown"}
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        // existing layouts
-                        return (
-                            <div key={i} className={variant === "list" ? "list-item" : "card"}>
-                                {cover && <img src={cover} alt="" />}
-
-                                <div className={variant === "list" ? "" : "card-body"}>
-                                    <div className="card-title">
-                                        {item.name ||
-                                            item.release_name ||
-                                            item.track_metadata?.track_name ||
-                                            "Unknown"}
-                                    </div>
-
-                                    <div className="card-sub">
-                                        {item.artist ||
-                                            item.artist_name ||
-                                            item.track_metadata?.artist_name ||
-                                            item.artist_credit_name ||
-                                            "Unknown"}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
     }
 
     return (
         <div>
 
-            {/*list row grid chart*/}
-
-            <AlbumSection
+            { user && <Viewpoint
                 title="Your Top Albums"
-                items={topSongsListened}
+                items={topAlbums}
+                onItemClick={handleClick}
+                getCover={getCover}
+                getTitle={(i) => i.title}
+                getSub={(i) => i.artist}
                 variant="chart"
-            />
+            />}
 
-            <AlbumSection
+            <Viewpoint
                 title="Popular Albums Now"
                 items={sitewideAlbums}
-                variant="row"
+                onItemClick={handleClick}
+                getCover={getCover}
+                getTitle={(i) => i.title}
+                getSub={(i) => i.artist}
+                variant="grid"
             />
 
-            <AlbumSection
+            <Viewpoint
                 title="New Releases"
                 items={freshReleases}
-                variant="row"
+                onItemClick={handleClick}
+                getCover={getCover}
+                getTitle={(i) => i.title}
+                getSub={(i) => i.artist}
+                variant="grid"
             />
 
-            <AlbumSection
+            { user && <Viewpoint
                 title="History"
                 items={listens}
+                onItemClick={handleClick}
+                getCover={getCover}
+                getTitle={(i) => i.title}
+                getSub={(i) => i.artist}
                 variant="list"
-            />
+            />}
 
         </div>
     );

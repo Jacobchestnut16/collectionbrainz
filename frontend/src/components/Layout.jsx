@@ -1,9 +1,29 @@
 import { Outlet, Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import {useEffect, useState} from "react";
+import axios from "axios";
+import {Navigate} from "react-router-dom";
 
 export default function Layout() {
     const [q, setQ] = useState("");
     const navigate = useNavigate();
+    const token = localStorage.getItem("session_token");
+    const [user, setUser] = useState(null);
+
+
+    useEffect(() => {
+
+        axios
+            .get("http://127.0.0.1:8000/me", {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            .then(res => setUser(res.data));
+
+    }, [token]);
+
+    const handleSignIn = async () => {
+        window.location.href = "http://127.0.0.1:8000/auth/login";
+    };
+
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -15,7 +35,7 @@ export default function Layout() {
     return (
         <div>
             <nav style={{ display: "flex", gap: "15px", padding: "10px" }}>
-                <Link to="/app">CollectionBrainz</Link>
+                <h1><Link to="/">CollectionBrainz</Link></h1>
 
                 <Link>Collection</Link>
 
@@ -28,6 +48,14 @@ export default function Layout() {
                         placeholder="Search..."
                     />
                 </form>
+
+                {
+                    !user &&
+                <button onClick={handleSignIn}>
+                    Continue with MusicBrainz
+                </button>
+                }
+
             </nav>
 
             {/* This is where pages render */}

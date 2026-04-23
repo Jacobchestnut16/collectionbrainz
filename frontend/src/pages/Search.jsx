@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { search } from "../api/client";
+import { getCover } from "../utils/getCover";
 
 export default function Search() {
     const [params, setParams] = useSearchParams();
@@ -12,16 +13,17 @@ export default function Search() {
     const [input, setInput] = useState("");
 
     const observer = useRef();
+    const navigate = useNavigate();
 
     const query = params.get("q") || "";
     const filter = params.get("type") || "all";
 
-    // sync input with URL
+    /* ---------- sync input ---------- */
     useEffect(() => {
         setInput(query);
     }, [query]);
 
-    // run search when query changes
+    /* ---------- search trigger ---------- */
     useEffect(() => {
         if (!query) return;
 
@@ -45,21 +47,25 @@ export default function Search() {
 
         setLoading(true);
 
-        const data = await search(query, newOffset);
+        try {
+            const data = await search(query, newOffset);
 
-        if (append) {
-            setResults(prev => [...prev, ...data.results]);
-        } else {
-            setResults(data.results);
+            if (append) {
+                setResults(prev => [...prev, ...data.results]);
+            } else {
+                setResults(data.results);
+            }
+
+            setOffset(data.offset + data.limit);
+            setHasMore(data.offset + data.limit < data.total);
+        } catch (err) {
+            console.error("Search failed:", err);
         }
-
-        setOffset(data.offset + data.limit);
-        setHasMore(data.offset + data.limit < data.total);
 
         setLoading(false);
     }
 
-    // infinite scroll trigger
+    /* ---------- infinite scroll ---------- */
     const lastItemRef = (node) => {
         if (loading || !hasMore) return;
 
@@ -74,17 +80,13 @@ export default function Search() {
         if (node) observer.current.observe(node);
     };
 
-    // filtering layer
+    /* ---------- filtering ---------- */
     const filteredResults = results.filter(item => {
         if (filter === "all") return true;
-        if (filter === "recording") return item.type === "recording";
-        if (filter === "release") return item.type === "release";
-        if (filter === "artist") return item.type === "artist";
-        if (filter === "brainz-person") return item.type === "brainz-person";
-        return true;
+        return item.type === filter;
     });
 
-    // unified helpers
+    /* ---------- helpers ---------- */
     function getTitle(item) {
         return item.title || item.name || "Unknown";
     }
@@ -103,26 +105,41 @@ export default function Search() {
         return type;
     }
 
-    function getCover(item) {
-        if (item.type === "release" && item.id) {
-            return `https://coverartarchive.org/release/${item.id}/front-250`;
+    /* ---------- navigation ---------- */
+    function handleClick(item) {
+        if (item.type === "artist") {
+            navigate(`/artist/${item.id}`);
+            return;
         }
 
-        if (item.type === "recording" && item.release_id) {
-            return `https://coverartarchive.org/release/${item.release_id}/front-250`;
+        // ALBUM (release)
+        if (item.type === "release") {
+            if (!item.artist_id) return;
+
+            const rg = item.release_group_id || item.id;
+
+            navigate(`/artist/${item.artist_id}?rg=${rg}`);
+            return;
         }
 
-        if (item.type === "artist" && item.id) {
-            return `https://coverartarchive.org/artist/${item.id}/front-250`;
-        }
+        // SONG (recording)
+        if (item.type === "recording") {
+            if (!item.artist_id) return;
 
-        if (item.type === "brainz-person") {
-            return "/default-avatar.png";
-        }
+            const rg = item.release_group_id;
 
-        return null;
+            if (rg) {
+                navigate(`/artist/${item.artist_id}?rg=${rg}`);
+            } else if (item.release_id) {
+                // fallback if missing
+                navigate(
+                    `/artist/${item.artist_id}?release=${item.release_id}`
+                );
+            }
+        }
     }
 
+    /* ---------- render ---------- */
     return (
         <div>
             <h1>Search</h1>
@@ -163,9 +180,10 @@ export default function Search() {
             <div className="section">
                 <div className="list">
                     {filteredResults.map((item, i) => {
-                        const isLast = i === filteredResults.length - 1;
+                        const isLast =
+                            i === filteredResults.length - 1;
 
-                        const cover = getCover(item);
+                        const cover = getCover(item); // ✅ unified usage
                         const title = getTitle(item);
                         const artist = getArtist(item);
                         const album = getAlbum(item);
@@ -175,8 +193,18 @@ export default function Search() {
                                 key={item.id + i}
                                 ref={isLast ? lastItemRef : null}
                                 className="list-item"
+                                onClick={() => handleClick(item)}
                             >
-                                {cover && <img src={cover} alt="" />}
+                                {cover && (
+                                    <img
+                                        src={cover}
+                                        alt=""
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) =>
+                                            (e.target.style.display = "none")
+                                        }
+                                    />
+                                )}
 
                                 <div>
                                     <div className="card-title">
@@ -187,7 +215,9 @@ export default function Search() {
                                         {artist}
                                         {album && ` • ${album}`}
                                         {item.type &&
-                                            ` • ${normalizeType(item.type)}`}
+                                            ` • ${normalizeType(
+                                                item.type
+                                            )}`}
                                     </div>
                                 </div>
                             </div>
@@ -196,7 +226,9 @@ export default function Search() {
                 </div>
             </div>
 
-            {loading && results.length > 0 && <div>Loading more...</div>}
+            {loading && results.length > 0 && (
+                <div>Loading more...</div>
+            )}
         </div>
     );
 }
