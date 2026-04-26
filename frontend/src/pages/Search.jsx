@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { search } from "../api/client";
 import { getCover } from "../utils/getCover";
+import ItemActions from "../components/ItemActions";
 
 export default function Search() {
     const [params, setParams] = useSearchParams();
@@ -18,12 +19,10 @@ export default function Search() {
     const query = params.get("q") || "";
     const filter = params.get("type") || "all";
 
-    /* ---------- sync input ---------- */
     useEffect(() => {
         setInput(query);
     }, [query]);
 
-    /* ---------- search trigger ---------- */
     useEffect(() => {
         if (!query) return;
 
@@ -59,13 +58,12 @@ export default function Search() {
             setOffset(data.offset + data.limit);
             setHasMore(data.offset + data.limit < data.total);
         } catch (err) {
-            console.error("Search failed:", err);
+            console.error(err);
         }
 
         setLoading(false);
     }
 
-    /* ---------- infinite scroll ---------- */
     const lastItemRef = (node) => {
         if (loading || !hasMore) return;
 
@@ -80,49 +78,19 @@ export default function Search() {
         if (node) observer.current.observe(node);
     };
 
-    /* ---------- filtering ---------- */
-    const filteredResults = results.filter(item => {
-        if (filter === "all") return true;
-        return item.type === filter;
-    });
-
-    /* ---------- helpers ---------- */
-    function getTitle(item) {
-        return item.title || item.name || "Unknown";
-    }
-
-    function getArtist(item) {
-        return item.artist || "Unknown";
-    }
-
-    function getAlbum(item) {
-        return item.album || null;
-    }
-
-    function normalizeType(type) {
-        if (type === "recording") return "song";
-        if (type === "release") return "album";
-        return type;
-    }
-
-    /* ---------- navigation ---------- */
     function handleClick(item) {
         if (item.type === "artist") {
             navigate(`/artist/${item.id}`);
             return;
         }
 
-        // ALBUM (release)
         if (item.type === "release") {
             if (!item.artist_id) return;
-
             const rg = item.release_group_id || item.id;
-
             navigate(`/artist/${item.artist_id}?rg=${rg}`);
             return;
         }
 
-        // SONG (recording)
         if (item.type === "recording") {
             if (!item.artist_id) return;
 
@@ -131,15 +99,11 @@ export default function Search() {
             if (rg) {
                 navigate(`/artist/${item.artist_id}?rg=${rg}`);
             } else if (item.release_id) {
-                // fallback if missing
-                navigate(
-                    `/artist/${item.artist_id}?release=${item.release_id}`
-                );
+                navigate(`/artist/${item.artist_id}?release=${item.release_id}`);
             }
         }
     }
 
-    /* ---------- render ---------- */
     return (
         <div>
             <h1>Search</h1>
@@ -149,44 +113,15 @@ export default function Search() {
                     name="q"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Search..."
                 />
                 <button type="submit">Search</button>
             </form>
 
-            {/* FILTERS */}
-            <div className="filters">
-                {[
-                    { key: "all", label: "All" },
-                    { key: "recording", label: "Songs" },
-                    { key: "release", label: "Albums" },
-                    { key: "artist", label: "Artists" },
-                    { key: "brainz-person", label: "People" },
-                ].map(f => (
-                    <button
-                        key={f.key}
-                        onClick={() =>
-                            setParams({ q: query, type: f.key })
-                        }
-                        className={filter === f.key ? "active" : ""}
-                    >
-                        {f.label}
-                    </button>
-                ))}
-            </div>
-
-            {loading && results.length === 0 && <div>Loading...</div>}
-
             <div className="section">
                 <div className="list">
-                    {filteredResults.map((item, i) => {
-                        const isLast =
-                            i === filteredResults.length - 1;
-
-                        const cover = getCover(item); // ✅ unified usage
-                        const title = getTitle(item);
-                        const artist = getArtist(item);
-                        const album = getAlbum(item);
+                    {results.map((item, i) => {
+                        const isLast = i === results.length - 1;
+                        const cover = getCover(item);
 
                         return (
                             <div
@@ -194,41 +129,32 @@ export default function Search() {
                                 ref={isLast ? lastItemRef : null}
                                 className="list-item"
                                 onClick={() => handleClick(item)}
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center"
+                                }}
                             >
-                                {cover && (
-                                    <img
-                                        src={cover}
-                                        alt=""
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) =>
-                                            (e.target.style.display = "none")
-                                        }
-                                    />
-                                )}
+                                <div style={{ display: "flex", gap: 10 }}>
+                                    {cover && <img src={cover} alt="" />}
 
-                                <div>
-                                    <div className="card-title">
-                                        {title}
-                                    </div>
+                                    <div>
+                                        <div className="card-title">
+                                            {item.title}
+                                        </div>
 
-                                    <div className="card-sub">
-                                        {artist}
-                                        {album && ` • ${album}`}
-                                        {item.type &&
-                                            ` • ${normalizeType(
-                                                item.type
-                                            )}`}
+                                        <div className="card-sub">
+                                            {item.artist}
+                                        </div>
                                     </div>
                                 </div>
+
+                                <ItemActions item={item} />
                             </div>
                         );
                     })}
                 </div>
             </div>
-
-            {loading && results.length > 0 && (
-                <div>Loading more...</div>
-            )}
         </div>
     );
 }

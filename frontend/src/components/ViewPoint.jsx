@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
-/* ---------- helpers ---------- */
+import ItemActions from "../components/ItemActions";
 
 function getColumnCount(containerWidth, minCardWidth = 140, gap = 16) {
     if (!containerWidth) return 1;
@@ -11,12 +10,10 @@ function getColumnCount(containerWidth, minCardWidth = 140, gap = 16) {
     );
 }
 
-/* ---------- component ---------- */
-
 export default function Viewpoint({
                                       title,
                                       items = [],
-                                      variant = "grid", // grid | list | chart
+                                      variant = "grid",
                                       onItemClick,
                                       selectedId,
                                       tracks = [],
@@ -28,7 +25,6 @@ export default function Viewpoint({
     const containerRef = useRef(null);
     const [columns, setColumns] = useState(3);
 
-    /* responsive columns (only relevant for grid if you later expand it) */
     useEffect(() => {
         if (!containerRef.current) return;
 
@@ -49,7 +45,7 @@ export default function Viewpoint({
         <div className="section" ref={containerRef}>
             <h2>{title}</h2>
 
-            {/* ---------- LIST (search style) ---------- */}
+            {/* LIST */}
             {isList && (
                 <div className="list">
                     {items.map((item) => {
@@ -61,34 +57,41 @@ export default function Viewpoint({
                                 key={item.id}
                                 className={`list-item ${isSelected ? "active" : ""}`}
                                 onClick={() => onItemClick?.(item)}
+                                style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                }}
                             >
-                                {cover && (
-                                    <img
-                                        src={cover}
-                                        alt=""
-                                        referrerPolicy="no-referrer"
-                                        onError={(e) =>
-                                            (e.target.style.display = "none")
-                                        }
-                                    />
-                                )}
+                                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                    {cover && (
+                                        <img
+                                            src={cover}
+                                            alt=""
+                                            referrerPolicy="no-referrer"
+                                            onError={(e) => (e.target.style.display = "none")}
+                                        />
+                                    )}
 
-                                <div>
-                                    <div className="card-title">
-                                        {getTitle?.(item) ?? "Unknown"}
-                                    </div>
+                                    <div>
+                                        <div className="card-title">
+                                            {getTitle?.(item) ?? "Unknown"}
+                                        </div>
 
-                                    <div className="card-sub">
-                                        {getSub?.(item) ?? ""}
+                                        <div className="card-sub">
+                                            {getSub?.(item) ?? ""}
+                                        </div>
                                     </div>
                                 </div>
+
+                                <ItemActions item={item} />
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            {/* ---------- GRID (cards) ---------- */}
+            {/* GRID */}
             {isGrid && (
                 <div className="grid">
                     {items.map((item) => {
@@ -111,6 +114,8 @@ export default function Viewpoint({
                                     <div className="card-sub">
                                         {getSub?.(item) ?? ""}
                                     </div>
+
+                                    <ItemActions item={item} />
                                 </div>
                             </div>
                         );
@@ -118,7 +123,7 @@ export default function Viewpoint({
                 </div>
             )}
 
-            {/* ---------- CHART (ranked list) ---------- */}
+            {/* CHART */}
             {isChart && (
                 <div className="chart">
                     {items.map((item, i) => {
@@ -144,13 +149,15 @@ export default function Viewpoint({
                                         {getSub?.(item) ?? ""}
                                     </div>
                                 </div>
+
+                                <ItemActions item={item} />
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            {/* ---------- EXPANDED (dashboard only) ---------- */}
+            {/* EXPANDED */}
             {isGrid && selectedId && selectedRelease && (
                 <div className="expanded-row">
                     <h3>Tracks — {selectedRelease.title}</h3>

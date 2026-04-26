@@ -10,7 +10,7 @@ export default function AuthCallback() {
 
         if (token) {
             localStorage.setItem("session_token", token);
-            navigate("/app");
+            navigate("/");
         }
     }, []);
 

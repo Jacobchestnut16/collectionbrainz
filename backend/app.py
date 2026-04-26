@@ -12,8 +12,8 @@ from routes.wishlist import router as wishlist_router
 from services.auth import get_user_from_token
 from routes.id_search import router as id
 from routes.dashboard import router as dashboard
+from routes.collection import router as collection_router
 
-# from routes.collection import router as collection_router
 app = FastAPI()
 
 BASE_URL = "https://api.listenbrainz.org"
@@ -44,7 +44,7 @@ app.include_router(wishlist_router)
 app.include_router(id, prefix="/id", tags=["id"])
 
 app.include_router(dashboard, prefix="/dashboard", tags=["dashboard"])
-# app.include_router(collection_router)
+app.include_router(collection_router)
 
 system = {}
 
