@@ -272,14 +272,62 @@ def has_item(
 # --------------------------------------------------
 # list list' contents
 # --------------------------------------------------
-@router.get("/list")
-def get_collection(Authorization: str = Header(...)):
-    user_id = get_current_user_id(Authorization)
+from collections import defaultdict
 
-    return query("""
+@router.get("/list")
+def get_collection(user_id: int = Depends(get_current_user_id)):
+    rows = query("""
         SELECT r.*
         FROM collection c
         JOIN recordings r ON r.id = c.recording_id
         WHERE c.user_id = %s
         ORDER BY r.artist_name, r.release_name, r.title
     """, (user_id,), fetch=True)
+
+    artists = {}
+
+    for r in rows:
+        artist_name = r["artist_name"] or "Unknown Artist"
+        artist_id = r["artist_id"] or "unknown"
+
+        release_id = r["release_id"]
+        release_name = r["release_name"] or "Unknown Release"
+
+        # --- artist ---
+        if artist_id not in artists:
+            artists[artist_id] = {
+                "artist_name": artist_name,
+                "artist_id": artist_id,
+                "releases": {}
+            }
+
+        # --- release ---
+        releases = artists[artist_id]["releases"]
+
+        if release_id not in releases:
+            releases[release_id] = {
+                "id": release_id,
+                "title": release_name,
+                "release_id": r["release_id"],
+                "release_group_id": r["release_group_id"],
+                "artist_id": r["artist_id"],
+                "tracks": []
+            }
+
+        # --- track ---
+        releases[release_id]["tracks"].append({
+            "id": r["mbid"],
+            "title": r["title"],
+            "release_id": r["release_id"],
+            "release_group_id": r["release_group_id"]
+        })
+
+    return {
+        "artists": [
+            {
+                **a,
+                "releases": list(a["releases"].values())
+            }
+            for a in artists.values()
+        ]
+    }

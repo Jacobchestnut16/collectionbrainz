@@ -37,9 +37,9 @@ export default function Layout() {
             <nav style={{ display: "flex", gap: "15px", padding: "10px" }}>
                 <h1><Link to="/">CollectionBrainz</Link></h1>
 
-                <Link>Collection</Link>
+                <Link to="/collection">Collection</Link>
 
-                <Link>Wishlist</Link>
+                <Link to="/wishlist">Wishlist</Link>
 
                 <form onSubmit={handleSubmit}>
                     <input

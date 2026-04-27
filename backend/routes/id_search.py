@@ -22,17 +22,20 @@ def get_release(release_id: str):
     path = f"/release/{release_id}"
     url = BASE_URL + path
     try:
-        res = requests.get(url,
-                           params={
-                               "fmt": "json",
-                               "inc": "recordings"
-                           },
-                           headers=headers,
-                           timeout=5)
+        res = requests.get(
+            url,
+            params={
+                "fmt": "json",
+                "inc": "recordings+artists+release-groups"
+            },
+            headers=headers,
+            timeout=5
+        )
 
-        if (res.status_code != 200):
+        if res.status_code != 200:
             print(f"GET {path} {res.status_code}: full-uri:{url},status:{res.status_code},results:{res.text}")
 
         return res.json()
+
     except Exception:
         raise HTTPException(status_code=500, detail="Upstream error")

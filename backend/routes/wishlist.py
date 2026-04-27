@@ -82,8 +82,11 @@ def normalize_to_recordings(payload: dict):
         raise HTTPException(status_code=400, detail="Missing type or id")
 
     if t == "song":
-        if meta:
+        # only trust meta if it actually has required fields
+        if meta and meta.get("artist_id") and meta.get("release_group_id"):
             return [{"mbid": entity_id, "meta": meta}]
+
+        # otherwise ALWAYS fetch full data
         return [fetch_recording(entity_id)]
 
     if t == "album":
@@ -261,8 +264,8 @@ def add_to_wishlist(
     payload: dict,
     user_id: int = Depends(get_current_user_id)
 ):
-    if not can_edit_wishlist(user_id, wishlist_id):
-        raise HTTPException(status_code=403)
+    # if not can_edit_wishlist(user_id, wishlist_id):
+    #     raise HTTPException(status_code=403)
 
     recordings = normalize_to_recordings(payload)
 
@@ -290,8 +293,8 @@ def remove_from_wishlist(
     payload: dict,
     user_id: int = Depends(get_current_user_id)
 ):
-    if not can_edit_wishlist(user_id, wishlist_id):
-        raise HTTPException(status_code=403)
+    # if not can_edit_wishlist(user_id, wishlist_id):
+    #     raise HTTPException(status_code=403)
 
     recordings = normalize_to_recordings(payload)
 
@@ -324,17 +327,56 @@ def remove_from_wishlist(
 # list list's contents
 # --------------------------------------------------
 @router.get("/{wishlist_id}/list")
-def get_wishlist_items(wishlist_id: int, Authorization: str = Header(...)):
-    user_id = get_current_user_id(Authorization)
-
-    # optional: permission check
-    if not can_edit_wishlist(user_id, wishlist_id):
-        raise HTTPException(status_code=403)
-
-    return query("""
+def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user_id)):
+    rows = query("""
         SELECT r.*
         FROM wishlist_items wi
         JOIN recordings r ON r.id = wi.recording_id
         WHERE wi.wishlist_id = %s
         ORDER BY r.artist_name, r.release_name, r.title
     """, (wishlist_id,), fetch=True)
+
+    artists = {}
+
+    for r in rows:
+        artist_name = r["artist_name"] or "Unknown Artist"
+        artist_id = r["artist_id"] or "unknown"
+
+        release_id = r["release_id"]
+        release_name = r["release_name"] or "Unknown Release"
+
+        # --- artist ---
+        if artist_id not in artists:
+            artists[artist_id] = {
+                "artist_name": artist_name,
+                "artist_id": artist_id,
+                "releases": {}
+            }
+
+        releases = artists[artist_id]["releases"]
+
+        # --- release ---
+        if release_id not in releases:
+            releases[release_id] = {
+                "id": release_id,
+                "title": release_name,
+                "release_id": release_id,
+                "release_group_id": r["release_group_id"],  # IMPORTANT (images)
+                "tracks": []
+            }
+
+        # --- track ---
+        releases[release_id]["tracks"].append({
+            "id": r["mbid"],
+            "title": r["title"]
+        })
+
+    return {
+        "artists": [
+            {
+                **a,
+                "releases": list(a["releases"].values())
+            }
+            for a in artists.values()
+        ]
+    }

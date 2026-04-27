@@ -6,7 +6,7 @@ export async function addToCollection(payload) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: localStorage.getItem("token")
+            Authorization: localStorage.getItem("session_token")
         },
         body: JSON.stringify(payload)
     });
@@ -18,7 +18,7 @@ export async function removeFromCollection(payload) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: localStorage.getItem("token")
+            Authorization: localStorage.getItem("session_token")
         },
         body: JSON.stringify(payload)
     });
@@ -30,7 +30,7 @@ export async function addToWishlist(wishlistId, payload) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: localStorage.getItem("token")
+            Authorization: localStorage.getItem("session_token")
         },
         body: JSON.stringify(payload)
     });
@@ -42,7 +42,7 @@ export async function removeFromWishlist(wishlistId, payload) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            Authorization: localStorage.getItem("token")
+            Authorization: localStorage.getItem("session_token")
         },
         body: JSON.stringify(payload)
     });
