@@ -212,10 +212,45 @@ def can_edit_wishlist(user_id: int, wishlist_id: int):
             ON e.wishlist_id = w.id
             AND e.user_id = %s
         WHERE w.id = %s
-        AND (w.user_id = %s OR e.user_id IS NOT NULL)
+        AND (
+            w.user_id = %s
+            OR (e.user_id IS NOT NULL AND e.can_edit = TRUE)
+        )
     """, (user_id, wishlist_id, user_id), fetch=True)
 
     return bool(row)
+
+def can_view_wishlist(user_id: int, wishlist_id: int):
+    row = query("""
+        SELECT w.user_id, w.visibility
+        FROM wishlists w
+        WHERE w.id = %s
+    """, (wishlist_id,), fetch=True)
+
+    if not row:
+        return False
+
+    owner_id = row[0]["user_id"]
+    visibility = row[0]["visibility"]
+
+    # owner always allowed
+    if owner_id == user_id:
+        return True
+
+    # public
+    if visibility == "public":
+        return True
+
+    # friends
+    if visibility == "friends":
+        friend = query("""
+            SELECT 1 FROM user_friends
+            WHERE user_id = %s AND friend_id = %s
+        """, (owner_id, user_id), fetch=True)
+
+        return bool(friend)
+
+    return False
 
 
 # --------------------------------------------------
@@ -223,11 +258,19 @@ def can_edit_wishlist(user_id: int, wishlist_id: int):
 # --------------------------------------------------
 @router.get("/lists")
 def get_lists(user_id: int = Depends(get_current_user_id)):
-    return query(
-        "SELECT id, name FROM wishlists WHERE user_id=%s",
-        (user_id,),
-        fetch=True
-    )
+    return query("""
+        SELECT DISTINCT w.id, w.name
+        FROM wishlists w
+        LEFT JOIN wishlist_editors e
+            ON e.wishlist_id = w.id AND e.user_id = %s
+        LEFT JOIN user_friends f
+            ON f.user_id = w.user_id AND f.friend_id = %s
+        WHERE
+            w.user_id = %s
+            OR e.user_id IS NOT NULL
+            OR w.visibility = 'public'
+            OR (w.visibility = 'friends' AND f.friend_id IS NOT NULL)
+    """, (user_id, user_id, user_id), fetch=True)
 
 
 # --------------------------------------------------
@@ -264,8 +307,8 @@ def add_to_wishlist(
     payload: dict,
     user_id: int = Depends(get_current_user_id)
 ):
-    # if not can_edit_wishlist(user_id, wishlist_id):
-    #     raise HTTPException(status_code=403)
+    if not can_edit_wishlist(user_id, wishlist_id):
+        raise HTTPException(status_code=403)
 
     recordings = normalize_to_recordings(payload)
 
@@ -293,8 +336,8 @@ def remove_from_wishlist(
     payload: dict,
     user_id: int = Depends(get_current_user_id)
 ):
-    # if not can_edit_wishlist(user_id, wishlist_id):
-    #     raise HTTPException(status_code=403)
+    if not can_edit_wishlist(user_id, wishlist_id):
+        raise HTTPException(status_code=403)
 
     recordings = normalize_to_recordings(payload)
 
@@ -328,6 +371,9 @@ def remove_from_wishlist(
 # --------------------------------------------------
 @router.get("/{wishlist_id}/list")
 def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user_id)):
+    if not can_view_wishlist(user_id, wishlist_id):
+        raise HTTPException(status_code=403)
+
     rows = query("""
         SELECT r.*
         FROM wishlist_items wi
@@ -379,4 +425,105 @@ def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user
             }
             for a in artists.values()
         ]
+    }
+
+@router.post("/{wishlist_id}/add-editor")
+def add_editor(
+    wishlist_id: int,
+    payload: dict,
+    user_id: int = Depends(get_current_user_id)
+):
+    target_user_id = payload.get("user_id")
+
+    # only owner can add editors
+    owner = query(
+        "SELECT user_id FROM wishlists WHERE id=%s",
+        (wishlist_id,),
+        fetch=True
+    )
+
+    if not owner or owner[0]["user_id"] != user_id:
+        raise HTTPException(status_code=403)
+
+    query("""
+        INSERT INTO wishlist_editors (wishlist_id, user_id, can_edit)
+        VALUES (%s, %s, TRUE)
+        ON CONFLICT DO NOTHING
+    """, (wishlist_id, target_user_id))
+
+    return {"status": "ok"}
+
+@router.post("/{wishlist_id}/remove-editor")
+def remove_editor(
+    wishlist_id: int,
+    payload: dict,
+    user_id: int = Depends(get_current_user_id)
+):
+    target_user_id = payload.get("user_id")
+
+    owner = query(
+        "SELECT user_id FROM wishlists WHERE id=%s",
+        (wishlist_id,),
+        fetch=True
+    )
+
+    if not owner or owner[0]["user_id"] != user_id:
+        raise HTTPException(status_code=403)
+
+    query("""
+        DELETE FROM wishlist_editors
+        WHERE wishlist_id=%s AND user_id=%s
+    """, (wishlist_id, target_user_id))
+
+    return {"status": "ok"}
+
+@router.post("/{wishlist_id}/visibility")
+def update_visibility(
+    wishlist_id: int,
+    payload: dict,
+    user_id: int = Depends(get_current_user_id)
+):
+    visibility = payload.get("visibility")
+
+    if visibility not in ["private", "friends", "public"]:
+        raise HTTPException(status_code=400)
+
+    owner = query(
+        "SELECT user_id FROM wishlists WHERE id=%s",
+        (wishlist_id,),
+        fetch=True
+    )
+
+    if not owner or owner[0]["user_id"] != user_id:
+        raise HTTPException(status_code=403)
+
+    query("""
+        UPDATE wishlists
+        SET visibility = %s
+        WHERE id = %s
+    """, (visibility, wishlist_id))
+
+    return {"status": "ok"}
+
+@router.get("/{wishlist_id}/meta")
+def get_meta(wishlist_id: int, user_id: int = Depends(get_current_user_id)):
+    if not can_view_wishlist(user_id, wishlist_id):
+        raise HTTPException(status_code=403)
+
+    w = query(
+        "SELECT visibility FROM wishlists WHERE id=%s",
+        (wishlist_id,),
+        fetch=True
+    )[0]
+
+    editors = query("""
+        SELECT u.id, u.mb_username AS username
+        FROM wishlist_editors e
+        JOIN users u ON u.id = e.user_id
+        WHERE e.wishlist_id = %s
+    """, (wishlist_id,), fetch=True)
+
+    return {
+        "visibility": w["visibility"],
+        "editors": editors
     }
