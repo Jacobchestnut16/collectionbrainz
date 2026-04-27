@@ -216,6 +216,43 @@ def can_edit_wishlist(user_id: int, wishlist_id: int):
 
 
 # --------------------------------------------------
+# GET LISTS (FIXED)
+# --------------------------------------------------
+@router.get("/lists")
+def get_lists(user_id: int = Depends(get_current_user_id)):
+    return query(
+        "SELECT id, name FROM wishlists WHERE user_id=%s",
+        (user_id,),
+        fetch=True
+    )
+
+
+# --------------------------------------------------
+# CREATE LIST (FIXED)
+# --------------------------------------------------
+@router.post("/create")
+def create_list(
+    payload: dict,
+    user_id: int = Depends(get_current_user_id)
+):
+    name = payload.get("name")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="Missing name")
+
+    row = query(
+        """
+        INSERT INTO wishlists (user_id, name)
+        VALUES (%s, %s)
+        RETURNING id, name
+        """,
+        (user_id, name),
+        fetch=True
+    )
+
+    return row[0]
+
+# --------------------------------------------------
 # ADD
 # --------------------------------------------------
 @router.post("/{wishlist_id}/add")
@@ -284,38 +321,20 @@ def remove_from_wishlist(
 
 
 # --------------------------------------------------
-# GET LISTS (FIXED)
+# list list's contents
 # --------------------------------------------------
-@router.get("/lists")
-def get_lists(user_id: int = Depends(get_current_user_id)):
-    return query(
-        "SELECT id, name FROM wishlists WHERE user_id=%s",
-        (user_id,),
-        fetch=True
-    )
+@router.get("/{wishlist_id}/list")
+def get_wishlist_items(wishlist_id: int, Authorization: str = Header(...)):
+    user_id = get_current_user_id(Authorization)
 
+    # optional: permission check
+    if not can_edit_wishlist(user_id, wishlist_id):
+        raise HTTPException(status_code=403)
 
-# --------------------------------------------------
-# CREATE LIST (FIXED)
-# --------------------------------------------------
-@router.post("/create")
-def create_list(
-    payload: dict,
-    user_id: int = Depends(get_current_user_id)
-):
-    name = payload.get("name")
-
-    if not name:
-        raise HTTPException(status_code=400, detail="Missing name")
-
-    row = query(
-        """
-        INSERT INTO wishlists (user_id, name)
-        VALUES (%s, %s)
-        RETURNING id, name
-        """,
-        (user_id, name),
-        fetch=True
-    )
-
-    return row[0]
+    return query("""
+        SELECT r.*
+        FROM wishlist_items wi
+        JOIN recordings r ON r.id = wi.recording_id
+        WHERE wi.wishlist_id = %s
+        ORDER BY r.artist_name, r.release_name, r.title
+    """, (wishlist_id,), fetch=True)

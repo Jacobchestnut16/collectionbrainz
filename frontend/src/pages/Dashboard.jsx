@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 import Viewpoint from "../components/ViewPoint.jsx";
 import { getCover } from "../utils/getCover";
+import {validate} from "../api/validate_token.js";
 
 export default function Dashboard() {
     const [listens, setListens] = useState([]);
@@ -16,15 +17,31 @@ export default function Dashboard() {
     const navigate = useNavigate();
 
     /* ---------- user ---------- */
+
+    const [isAuthed, setIsAuthed] = useState(false);
     useEffect(() => {
-        if (!token) return;
+        async function checkAuth() {
+            if (!token) {
+                setIsAuthed(false);
+                return;
+            }
+
+            const result = await validate(token);
+            setIsAuthed(result !== null);
+        }
+
+        checkAuth();
+    }, [token]);
+
+    useEffect(() => {
+        if (!token && !isAuthed) return;
 
         axios
             .get("http://127.0.0.1:8000/me", {
                 headers: { Authorization: `Bearer ${token}` }
             })
             .then(res => setUser(res.data));
-    }, [token]);
+    }, [token, isAuthed]);
 
     /* ---------- data ---------- */
     useEffect(() => {

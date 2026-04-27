@@ -5,6 +5,7 @@ import {
     addToWishlist
 } from "../api/library";
 import { buildPayload } from "../utils/buildPayload";
+import {validate} from '../api/validate_token.js'
 
 const baseURL = "http://127.0.0.1:8000";
 
@@ -12,13 +13,28 @@ export default function ItemActions({ item }) {
     const payload = buildPayload(item);
 
     const token = localStorage.getItem("session_token");
-    const isAuthed = !!token;
 
+    const [isAuthed, setIsAuthed] = useState(false);
     const [inCollection, setInCollection] = useState(false);
     const [wishlists, setWishlists] = useState([]);
     const [showPicker, setShowPicker] = useState(false);
 
     /* ---------- load state (ONLY if authed) ---------- */
+
+    useEffect(() => {
+        async function checkAuth() {
+            if (!token) {
+                setIsAuthed(false);
+                return;
+            }
+
+            const result = await validate(token);
+            setIsAuthed(result !== null);
+        }
+
+        checkAuth();
+    }, [token]);
+
     useEffect(() => {
         if (!isAuthed) return;
 
@@ -127,8 +143,7 @@ export default function ItemActions({ item }) {
     }
 
     /* ---------- render ---------- */
-
-    // 🔴 HARD STOP: hide everything if not authed
+    console.log("token: "+token);
     if (!isAuthed) return null;
 
     return (

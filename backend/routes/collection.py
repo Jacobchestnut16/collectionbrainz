@@ -267,3 +267,19 @@ def has_item(
     )
 
     return {"exists": bool(exists)}
+
+
+# --------------------------------------------------
+# list list' contents
+# --------------------------------------------------
+@router.get("/list")
+def get_collection(Authorization: str = Header(...)):
+    user_id = get_current_user_id(Authorization)
+
+    return query("""
+        SELECT r.*
+        FROM collection c
+        JOIN recordings r ON r.id = c.recording_id
+        WHERE c.user_id = %s
+        ORDER BY r.artist_name, r.release_name, r.title
+    """, (user_id,), fetch=True)
