@@ -1,21 +1,15 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import AlbumSection from "../components/AlbumSection";
 import { getCover } from "../utils/getCover";
+import { getCollection } from "../api/collection";
 
 export default function CollectionPage() {
     const [data, setItems] = useState(null);
 
     useEffect(() => {
         const fetchCollection = async () => {
-            const res = await axios.get(
-                "http://127.0.0.1:8000/collection/list",
-                {
-                    headers: { Authorization: `Bearer ${localStorage.getItem("session_token")}`}
-                }
-            );
-
-            setItems(res.data || []);
+            const res = await getCollection();
+            setItems(res.data);
         };
 
         fetchCollection();

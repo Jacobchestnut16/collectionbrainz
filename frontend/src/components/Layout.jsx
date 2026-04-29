@@ -1,24 +1,12 @@
 import { Outlet, Link, useNavigate } from "react-router-dom";
 import {useEffect, useState} from "react";
-import axios from "axios";
-import {Navigate} from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 
 export default function Layout() {
     const [q, setQ] = useState("");
     const navigate = useNavigate();
-    const token = localStorage.getItem("session_token");
-    const [user, setUser] = useState(null);
 
-
-    useEffect(() => {
-
-        axios
-            .get("http://127.0.0.1:8000/me", {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            .then(res => setUser(res.data));
-
-    }, [token]);
+    const { user } = useAuth();
 
     const handleSignIn = async () => {
         window.location.href = "http://127.0.0.1:8000/auth/login";
