@@ -1,13 +1,28 @@
 export function buildPayload(item) {
-    const typeMap = {
-        recording: "song",
-        release: "album",
-        artist: "artist"
-    };
+    // normalize type
+    let type = item.type;
+
+    if (type === "recording") type = "song";
+    if (type === "release") type = "album";
+
+    // pick correct id
+    let id = item.id;
+
+    if (type === "song") {
+        id = item.id; // recording MBID
+    }
+
+    if (type === "album") {
+        id = item.release_id || item.id; // IMPORTANT
+    }
+
+    if (type === "artist") {
+        id = item.id;
+    }
 
     return {
-        type: typeMap[item.type] || item.type,
-        id: item.id,
+        type,
+        id,
         meta: {
             title: item.title,
             artist: item.artist,

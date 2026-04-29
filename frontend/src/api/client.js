@@ -11,4 +11,15 @@ export const search = async (query, offset = 0) => {
     return res.data;
 };
 
+// inject token automatically
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("session_token");
+
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    return config;
+});
+
 export default api;

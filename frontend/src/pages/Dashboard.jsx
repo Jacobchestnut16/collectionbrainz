@@ -1,69 +1,49 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 import Viewpoint from "../components/ViewPoint.jsx";
 import { getCover } from "../utils/getCover";
-import {validate} from "../api/validate_token.js";
+import { useAuth } from "../hooks/useAuth";
+
+import {
+    getSitewide,
+    getFresh,
+    getUserTop,
+    getUserHistory
+} from "../api/dashboard";
 
 export default function Dashboard() {
     const [listens, setListens] = useState([]);
     const [sitewideAlbums, setSitewideAlbums] = useState([]);
     const [freshReleases, setFreshReleases] = useState([]);
     const [topAlbums, setTopAlbums] = useState([]);
-    const [user, setUser] = useState(null);
 
-    const token = localStorage.getItem("session_token");
+    const { user, isAuthed } = useAuth();
     const navigate = useNavigate();
 
-    /* ---------- user ---------- */
-
-    const [isAuthed, setIsAuthed] = useState(false);
+    /* ---------- public data ---------- */
     useEffect(() => {
-        async function checkAuth() {
-            if (!token) {
-                setIsAuthed(false);
-                return;
-            }
+        getSitewide().then(res =>
+            setSitewideAlbums(res.data.payload.releases.slice(0, 20))
+        );
 
-            const result = await validate(token);
-            setIsAuthed(result !== null);
-        }
+        getFresh().then(res =>
+            setFreshReleases(res.data.payload.releases.slice(0, 10))
+        );
+    }, []);
 
-        checkAuth();
-    }, [token]);
-
+    /* ---------- user data ---------- */
     useEffect(() => {
-        if (!token && !isAuthed) return;
+        if (!isAuthed || !user?.mb_username) return;
 
-        axios
-            .get("http://127.0.0.1:8000/me", {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-            .then(res => setUser(res.data));
-    }, [token, isAuthed]);
+        getUserTop(user.mb_username).then(res =>
+            setTopAlbums(res.data.payload.releases.slice(0, 10))
+        );
 
-    /* ---------- data ---------- */
-    useEffect(() => {
-
-        const base = "http://127.0.0.1:8000/dashboard";
-
-        axios.get(`${base}/sitewide/releases`)
-            .then(res => setSitewideAlbums(res.data.payload.releases.slice(0, 20)));
-
-        axios.get(`${base}/fresh-releases`)
-            .then(res => setFreshReleases(res.data.payload.releases.slice(0, 10)));
-
-        // everything that requires a logged-in user:
-        if (!user?.mb_username) return;
-
-        axios.get(`${base}/user/top-albums/${user.mb_username}`)
-            .then(res => setTopAlbums(res.data.payload.releases.slice(0, 10)));
-
-        axios.get(`${base}/user/history/${user.mb_username}`)
-            .then(res => setListens(res.data.payload.listens.slice(0, 10)));
-
-    }, [user]);
+        getUserHistory(user.mb_username).then(res =>
+            setListens(res.data.payload.listens.slice(0, 10))
+        );
+    }, [user, isAuthed]);
 
     /* ---------- click ---------- */
     function handleClick(item) {
@@ -82,16 +62,17 @@ export default function Dashboard() {
 
     return (
         <div>
-
-            { user && <Viewpoint
-                title="Your Top Albums"
-                items={topAlbums}
-                onItemClick={handleClick}
-                getCover={getCover}
-                getTitle={(i) => i.title}
-                getSub={(i) => i.artist}
-                variant="chart"
-            />}
+            {isAuthed && (
+                <Viewpoint
+                    title="Your Top Albums"
+                    items={topAlbums}
+                    onItemClick={handleClick}
+                    getCover={getCover}
+                    getTitle={(i) => i.title}
+                    getSub={(i) => i.artist}
+                    variant="chart"
+                />
+            )}
 
             <Viewpoint
                 title="Popular Albums Now"
@@ -113,16 +94,17 @@ export default function Dashboard() {
                 variant="grid"
             />
 
-            { user && <Viewpoint
-                title="History"
-                items={listens}
-                onItemClick={handleClick}
-                getCover={getCover}
-                getTitle={(i) => i.title}
-                getSub={(i) => i.artist}
-                variant="list"
-            />}
-
+            {isAuthed && (
+                <Viewpoint
+                    title="History"
+                    items={listens}
+                    onItemClick={handleClick}
+                    getCover={getCover}
+                    getTitle={(i) => i.title}
+                    getSub={(i) => i.artist}
+                    variant="list"
+                />
+            )}
         </div>
     );
 }
