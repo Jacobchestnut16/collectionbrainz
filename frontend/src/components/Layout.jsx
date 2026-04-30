@@ -9,7 +9,7 @@ export default function Layout() {
     const { user } = useAuth();
 
     const handleSignIn = async () => {
-        window.location.href = "http://127.0.0.1:8000/auth/login";
+        window.location.href = "/api/auth/login";
     };
 
 

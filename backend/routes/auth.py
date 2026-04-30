@@ -71,4 +71,4 @@ def callback(code: str):
 
     print(access_token)
 
-    return RedirectResponse("http://localhost:5173/auth?token=" + access_token)
+    return RedirectResponse(f"{os.getenv('FRONTEND_BASE_URL')}/auth?token=" + access_token)
