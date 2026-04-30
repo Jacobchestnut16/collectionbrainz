@@ -7,8 +7,6 @@ services:
       POSTGRES_USER: collectionbrainz
       POSTGRES_PASSWORD: collectionbrainz
       POSTGRES_DB: collectionbrainz
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -21,8 +19,6 @@ services:
       - db
     environment:
       DATABASE_URL: postgresql://collectionbrainz:collectionbrainz@db:5432/collectionbrainz
-    ports:
-      - "8000:8000"
     volumes:
       - ./backend:/app
 
@@ -32,10 +28,7 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
+
   nginx:
     image: nginx:latest
     container_name: nginx
