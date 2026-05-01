@@ -1,3 +1,4 @@
+import functools
 import time
 import threading
 
@@ -26,17 +27,21 @@ def set(key, value, ttl=DEFAULT_TTL):
         _cache[key] = (value, time.time() + ttl)
 
 
-def cached(key_builder, ttl=DEFAULT_TTL):
-    def decorator(fn):
+
+def cached(key_fn, ttl=60):
+    def decorator(func):
+        @functools.wraps(func)  # ✅ THIS is the fix
         def wrapper(*args, **kwargs):
-            key = key_builder(*args, **kwargs)
+            key = key_fn(*args, **kwargs)
+            now = time.time()
 
-            cached_value = get(key)
-            if cached_value is not None:
-                return cached_value
+            if key in _cache:
+                value, ts = _cache[key]
+                if now - ts < ttl:
+                    return value
 
-            result = fn(*args, **kwargs)
-            set(key, result, ttl)
+            result = func(*args, **kwargs)
+            _cache[key] = (result, now)
             return result
 
         return wrapper
