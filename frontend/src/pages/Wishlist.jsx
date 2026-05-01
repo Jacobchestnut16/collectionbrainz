@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import axios from "axios";
 import AlbumSection from "../components/AlbumSection";
 import { getCover } from "../utils/getCover";
+
+import {
+    getLists,
+    getWishlistItems,
+    getWishlistMeta,
+    updateVisibility,
+    addEditor,
+    removeEditor
+} from "../api/wishlist";
+
+import api from "../api/client"; // ONLY for users search (no wrapper exists yet)
 
 export default function WishlistPage() {
     const [lists, setLists] = useState([]);
@@ -9,82 +19,51 @@ export default function WishlistPage() {
     const [data, setData] = useState({ artists: [] });
     const [selectedRelease, setSelectedRelease] = useState(null);
 
-    // NEW
     const [visibility, setVisibility] = useState("private");
     const [collaborators, setCollaborators] = useState([]);
     const [userSearch, setUserSearch] = useState("");
     const [userResults, setUserResults] = useState([]);
 
-    const authHeader = {
-        headers: {
-            Authorization: `Bearer ${localStorage.getItem("session_token")}`,
-        },
-    };
-
     /* ---------- fetch lists ---------- */
     useEffect(() => {
-        const fetchLists = async () => {
-            const res = await axios.get(
-                "http://127.0.0.1:8000/wishlist/lists",
-                authHeader
-            );
-
-            setLists(res.data || []);
-            if (res.data?.length) {
-                setSelectedList(res.data[0].id);
-            }
-        };
-
-        fetchLists();
+        getLists()
+            .then((res) => {
+                setLists(res.data || []);
+                if (res.data?.length) {
+                    setSelectedList(res.data[0].id);
+                }
+            })
+            .catch(() => setLists([]));
     }, []);
 
     /* ---------- fetch list items ---------- */
     useEffect(() => {
         if (!selectedList) return;
 
-        const fetchItems = async () => {
-            const res = await axios.get(
-                `http://127.0.0.1:8000/wishlist/${selectedList}/list`,
-                authHeader
-            );
-
-            setData(res.data || { artists: [] });
-        };
-
-        fetchItems();
+        getWishlistItems(selectedList)
+            .then((res) => setData(res.data || { artists: [] }))
+            .catch(() => setData({ artists: [] }));
     }, [selectedList]);
 
-    /* ---------- fetch meta (visibility + editors) ---------- */
+    /* ---------- fetch meta ---------- */
     useEffect(() => {
         if (!selectedList) return;
 
-        const fetchMeta = async () => {
-            try {
-                const res = await axios.get(
-                    `http://127.0.0.1:8000/wishlist/${selectedList}/meta`,
-                    authHeader
-                );
-
+        getWishlistMeta(selectedList)
+            .then((res) => {
                 setVisibility(res.data.visibility);
                 setCollaborators(res.data.editors || []);
-            } catch {
+            })
+            .catch(() => {
                 setVisibility("private");
                 setCollaborators([]);
-            }
-        };
-
-        fetchMeta();
+            });
     }, [selectedList]);
 
     /* ---------- update visibility ---------- */
-    const updateVisibility = async (v) => {
+    const updateVis = async (v) => {
         setVisibility(v);
-
-        await axios.post(
-            `http://127.0.0.1:8000/wishlist/${selectedList}/visibility`,
-            { visibility: v },
-            authHeader
-        );
+        await updateVisibility(selectedList, v);
     };
 
     /* ---------- search users ---------- */
@@ -95,9 +74,8 @@ export default function WishlistPage() {
         }
 
         const delay = setTimeout(async () => {
-            const res = await axios.get(
-                `http://127.0.0.1:8000/users/search?q=${userSearch}`,
-                authHeader
+            const res = await api.get(
+                `/users/search?q=${encodeURIComponent(userSearch)}`
             );
 
             setUserResults(res.data || []);
@@ -108,11 +86,7 @@ export default function WishlistPage() {
 
     /* ---------- add collaborator ---------- */
     const addCollaborator = async (id) => {
-        await axios.post(
-            `http://127.0.0.1:8000/wishlist/${selectedList}/add-editor`,
-            { user_id: id },
-            authHeader
-        );
+        await addEditor(selectedList, id);
 
         setCollaborators((prev) => [...prev, { id }]);
         setUserSearch("");
@@ -120,12 +94,8 @@ export default function WishlistPage() {
     };
 
     /* ---------- remove collaborator ---------- */
-    const removeCollaborator = async (id) => {
-        await axios.post(
-            `http://127.0.0.1:8000/wishlist/${selectedList}/remove-editor`,
-            { user_id: id },
-            authHeader
-        );
+    const removeCollaboratorHandler = async (id) => {
+        await removeEditor(selectedList, id);
 
         setCollaborators((prev) => prev.filter((u) => u.id !== id));
     };
@@ -135,7 +105,6 @@ export default function WishlistPage() {
             <div className="artist-header">
                 <h1>Wishlists</h1>
 
-                {/* list selector */}
                 <select
                     value={selectedList || ""}
                     onChange={(e) => setSelectedList(e.target.value)}
@@ -148,15 +117,13 @@ export default function WishlistPage() {
                 </select>
             </div>
 
-            {/* ---------- CONTROLS ---------- */}
             {selectedList && (
                 <div style={{ marginBottom: 20 }}>
-                    {/* visibility */}
                     <div>
                         <label>Visibility: </label>
                         <select
                             value={visibility}
-                            onChange={(e) => updateVisibility(e.target.value)}
+                            onChange={(e) => updateVis(e.target.value)}
                         >
                             <option value="private">Private</option>
                             <option value="friends">Friends</option>
@@ -164,20 +131,18 @@ export default function WishlistPage() {
                         </select>
                     </div>
 
-                    {/* collaborators */}
                     <div style={{ marginTop: 10 }}>
                         <h3>Collaborators</h3>
 
                         {collaborators.map((u) => (
                             <div key={u.id}>
                                 {u.username || u.id}
-                                <button onClick={() => removeCollaborator(u.id)}>
+                                <button onClick={() => removeCollaboratorHandler(u.id)}>
                                     remove
                                 </button>
                             </div>
                         ))}
 
-                        {/* search */}
                         <input
                             placeholder="Add user..."
                             value={userSearch}
@@ -196,7 +161,6 @@ export default function WishlistPage() {
                 </div>
             )}
 
-            {/* ---------- CONTENT ---------- */}
             {data.artists.map((artist) => (
                 <AlbumSection
                     key={artist.artist_id}
