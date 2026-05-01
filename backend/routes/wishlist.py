@@ -1,20 +1,54 @@
 from fastapi import APIRouter, HTTPException, Depends
+import time
+import logging
 
 from routes.users import get_current_user_id
 from services.db import query
-
 from services.recording_services import normalize_to_recordings, upsert_recording
 from services.wishlist_service import can_edit_wishlist, can_view_wishlist
 
 router = APIRouter(prefix="/wishlist", tags=["wishlist"])
 
+log = logging.getLogger("wishlist")
 
 # --------------------------------------------------
-# GET LISTS (FIXED)
+# RETRY CORE
+# --------------------------------------------------
+MAX_RETRIES = 4
+BASE_DELAY = 0.25
+
+
+def retry_db(fn, label, *args, **kwargs):
+    last_err = None
+
+    for i in range(MAX_RETRIES):
+        try:
+            return fn(*args, **kwargs)
+
+        except Exception as e:
+            last_err = e
+            wait = BASE_DELAY * (2 ** i)
+
+            log.warning(f"{label} failed attempt {i+1}/{MAX_RETRIES}: {e}")
+            time.sleep(wait)
+
+    raise last_err
+
+
+def safe_query(sql, params=None, fetch=False, label="query"):
+    return retry_db(query, label, sql, params, fetch=fetch)
+
+
+def safe_upsert_recording(r):
+    return retry_db(upsert_recording, "upsert_recording", r)
+
+
+# --------------------------------------------------
+# GET LISTS
 # --------------------------------------------------
 @router.get("/lists")
 def get_lists(user_id: int = Depends(get_current_user_id)):
-    return query("""
+    return safe_query("""
         SELECT DISTINCT w.id, w.name
         FROM wishlists w
         LEFT JOIN wishlist_editors e
@@ -26,36 +60,29 @@ def get_lists(user_id: int = Depends(get_current_user_id)):
             OR e.user_id IS NOT NULL
             OR w.visibility = 'public'
             OR (w.visibility = 'friends' AND f.friend_id IS NOT NULL)
-    """, (user_id, user_id, user_id), fetch=True)
+    """, (user_id, user_id, user_id), fetch=True, label="get_lists")
 
 
 # --------------------------------------------------
-# CREATE LIST (FIXED)
+# CREATE LIST
 # --------------------------------------------------
 @router.post("/create")
-def create_list(
-    payload: dict,
-    user_id: int = Depends(get_current_user_id)
-):
+def create_list(payload: dict, user_id: int = Depends(get_current_user_id)):
     name = payload.get("name")
-
     if not name:
         raise HTTPException(status_code=400, detail="Missing name")
 
-    row = query(
-        """
+    row = safe_query("""
         INSERT INTO wishlists (user_id, name)
         VALUES (%s, %s)
         RETURNING id, name
-        """,
-        (user_id, name),
-        fetch=True
-    )
+    """, (user_id, name), fetch=True, label="create_list")
 
     return row[0]
 
+
 # --------------------------------------------------
-# ADD
+# ADD (HARDENED)
 # --------------------------------------------------
 @router.post("/{wishlist_id}/add")
 def add_to_wishlist(
@@ -68,23 +95,40 @@ def add_to_wishlist(
 
     recordings = normalize_to_recordings(payload)
 
-    added = 0
+    result = {
+        "status": "ok",
+        "added": 0,
+        "failed_upsert": 0,
+        "failed_insert": 0,
+        "total": len(recordings)
+    }
+
     for r in recordings:
-        rid = upsert_recording(r)
+        try:
+            rid = safe_upsert_recording(r)
+        except Exception as e:
+            log.error(f"upsert failed: {e}")
+            result["failed_upsert"] += 1
+            continue
 
-        query("""
-            INSERT INTO wishlist_items (wishlist_id, recording_id)
-            VALUES (%s, %s)
-            ON CONFLICT DO NOTHING
-        """, (wishlist_id, rid))
+        try:
+            safe_query("""
+                INSERT INTO wishlist_items (wishlist_id, recording_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING
+            """, (wishlist_id, rid), fetch=False, label="insert_wishlist_item")
 
-        added += 1
+            result["added"] += 1
 
-    return {"status": "ok", "added": added}
+        except Exception as e:
+            log.error(f"insert failed: {e}")
+            result["failed_insert"] += 1
+
+    return result
 
 
 # --------------------------------------------------
-# REMOVE
+# REMOVE (HARDENED)
 # --------------------------------------------------
 @router.post("/{wishlist_id}/remove")
 def remove_from_wishlist(
@@ -97,46 +141,57 @@ def remove_from_wishlist(
 
     recordings = normalize_to_recordings(payload)
 
-    removed = 0
+    result = {"removed": 0, "skipped": 0}
+
     for r in recordings:
         mbid = r.get("mbid")
-
-        row = query(
-            "SELECT id FROM recordings WHERE mbid = %s",
-            (mbid,),
-            fetch=True
-        )
-
-        if not row:
+        if not mbid:
+            result["skipped"] += 1
             continue
 
-        rid = row[0]["id"]
+        rows = safe_query(
+            "SELECT id FROM recordings WHERE mbid = %s",
+            (mbid,),
+            fetch=True,
+            label="lookup_recording"
+        )
 
-        query("""
-            DELETE FROM wishlist_items
-            WHERE wishlist_id = %s AND recording_id = %s
-        """, (wishlist_id, rid))
+        if not rows:
+            result["skipped"] += 1
+            continue
 
-        removed += 1
+        rid = rows[0]["id"]
 
-    return {"status": "ok", "removed": removed}
+        try:
+            safe_query("""
+                DELETE FROM wishlist_items
+                WHERE wishlist_id = %s AND recording_id = %s
+            """, (wishlist_id, rid), label="delete_wishlist_item")
+
+            result["removed"] += 1
+
+        except Exception as e:
+            log.error(f"delete failed: {e}")
+            result["skipped"] += 1
+
+    return result
 
 
 # --------------------------------------------------
-# list list's contents
+# LIST CONTENTS (UNCHANGED LOGIC)
 # --------------------------------------------------
 @router.get("/{wishlist_id}/list")
 def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user_id)):
     if not can_view_wishlist(user_id, wishlist_id):
         raise HTTPException(status_code=403)
 
-    rows = query("""
+    rows = safe_query("""
         SELECT r.*
         FROM wishlist_items wi
         JOIN recordings r ON r.id = wi.recording_id
         WHERE wi.wishlist_id = %s
         ORDER BY r.artist_name, r.release_name, r.title
-    """, (wishlist_id,), fetch=True)
+    """, (wishlist_id,), fetch=True, label="get_wishlist_items")
 
     artists = {}
 
@@ -147,7 +202,6 @@ def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user
         release_id = r["release_id"]
         release_name = r["release_name"] or "Unknown Release"
 
-        # --- artist ---
         if artist_id not in artists:
             artists[artist_id] = {
                 "artist_name": artist_name,
@@ -157,17 +211,15 @@ def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user
 
         releases = artists[artist_id]["releases"]
 
-        # --- release ---
         if release_id not in releases:
             releases[release_id] = {
                 "id": release_id,
                 "title": release_name,
                 "release_id": release_id,
-                "release_group_id": r["release_group_id"],  # IMPORTANT (images)
+                "release_group_id": r["release_group_id"],
                 "tracks": []
             }
 
-        # --- track ---
         releases[release_id]["tracks"].append({
             "id": r["mbid"],
             "title": r["title"]
@@ -175,109 +227,110 @@ def get_wishlist_items(wishlist_id: int, user_id: int = Depends(get_current_user
 
     return {
         "artists": [
-            {
-                **a,
-                "releases": list(a["releases"].values())
-            }
+            {**a, "releases": list(a["releases"].values())}
             for a in artists.values()
         ]
     }
 
-@router.post("/{wishlist_id}/add-editor")
-def add_editor(
-    wishlist_id: int,
-    payload: dict,
-    user_id: int = Depends(get_current_user_id)
-):
-    target_user_id = payload.get("user_id")
 
-    # only owner can add editors
-    owner = query(
+# --------------------------------------------------
+# EDITORS (SAFE WRAPPED)
+# --------------------------------------------------
+@router.post("/{wishlist_id}/add-editor")
+def add_editor(wishlist_id: int, payload: dict, user_id: int = Depends(get_current_user_id)):
+    target = payload.get("user_id")
+
+    owner = safe_query(
         "SELECT user_id FROM wishlists WHERE id=%s",
         (wishlist_id,),
-        fetch=True
+        fetch=True,
+        label="check_owner"
     )
 
     if not owner or owner[0]["user_id"] != user_id:
         raise HTTPException(status_code=403)
 
-    query("""
+    safe_query("""
         INSERT INTO wishlist_editors (wishlist_id, user_id, can_edit)
         VALUES (%s, %s, TRUE)
         ON CONFLICT DO NOTHING
-    """, (wishlist_id, target_user_id))
+    """, (wishlist_id, target), label="add_editor")
 
     return {"status": "ok"}
 
-@router.post("/{wishlist_id}/remove-editor")
-def remove_editor(
-    wishlist_id: int,
-    payload: dict,
-    user_id: int = Depends(get_current_user_id)
-):
-    target_user_id = payload.get("user_id")
 
-    owner = query(
+@router.post("/{wishlist_id}/remove-editor")
+def remove_editor(wishlist_id: int, payload: dict, user_id: int = Depends(get_current_user_id)):
+    target = payload.get("user_id")
+
+    owner = safe_query(
         "SELECT user_id FROM wishlists WHERE id=%s",
         (wishlist_id,),
-        fetch=True
+        fetch=True,
+        label="check_owner"
     )
 
     if not owner or owner[0]["user_id"] != user_id:
         raise HTTPException(status_code=403)
 
-    query("""
+    safe_query("""
         DELETE FROM wishlist_editors
         WHERE wishlist_id=%s AND user_id=%s
-    """, (wishlist_id, target_user_id))
+    """, (wishlist_id, target), label="remove_editor")
 
     return {"status": "ok"}
 
+
+# --------------------------------------------------
+# VISIBILITY
+# --------------------------------------------------
 @router.post("/{wishlist_id}/visibility")
-def update_visibility(
-    wishlist_id: int,
-    payload: dict,
-    user_id: int = Depends(get_current_user_id)
-):
+def update_visibility(wishlist_id: int, payload: dict, user_id: int = Depends(get_current_user_id)):
     visibility = payload.get("visibility")
 
     if visibility not in ["private", "friends", "public"]:
         raise HTTPException(status_code=400)
 
-    owner = query(
+    owner = safe_query(
         "SELECT user_id FROM wishlists WHERE id=%s",
         (wishlist_id,),
-        fetch=True
+        fetch=True,
+        label="check_owner"
     )
 
     if not owner or owner[0]["user_id"] != user_id:
         raise HTTPException(status_code=403)
 
-    query("""
+    safe_query("""
         UPDATE wishlists
         SET visibility = %s
         WHERE id = %s
-    """, (visibility, wishlist_id))
+    """, (visibility, wishlist_id), label="update_visibility")
 
     return {"status": "ok"}
 
+
+# --------------------------------------------------
+# META
+# --------------------------------------------------
 @router.get("/{wishlist_id}/meta")
 def get_meta(wishlist_id: int, user_id: int = Depends(get_current_user_id)):
     if not can_view_wishlist(user_id, wishlist_id):
         raise HTTPException(status_code=403)
 
-    w = query(
+    w = safe_query(
         "SELECT visibility FROM wishlists WHERE id=%s",
         (wishlist_id,),
-        fetch=True
+        fetch=True,
+        label="get_meta_visibility"
     )[0]
 
-    editors = query("""
+    editors = safe_query("""
         SELECT u.id, u.mb_username AS username
         FROM wishlist_editors e
         JOIN users u ON u.id = e.user_id
         WHERE e.wishlist_id = %s
-    """, (wishlist_id,), fetch=True)
+    """, (wishlist_id,), fetch=True, label="get_meta_editors")
 
     return {
         "visibility": w["visibility"],
