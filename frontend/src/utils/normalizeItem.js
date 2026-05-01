@@ -1,9 +1,10 @@
-// utils/normalizeItem.js
 export function normalizeItem(item) {
-    // already normalized
-    if (item.type) return item;
+    if (!item) return null;
 
-    // collection / wishlist / dashboard releases
+    // already normalized
+    if (item.type && item.id) return item;
+
+    // release (album/ep/single)
     if (item.release_id || item.release_group_id) {
         return {
             ...item,
@@ -12,7 +13,7 @@ export function normalizeItem(item) {
         };
     }
 
-    // artist fallback
+    // artist
     if (item.artist_id && !item.release_id) {
         return {
             ...item,
@@ -21,9 +22,16 @@ export function normalizeItem(item) {
         };
     }
 
-    // recording fallback
-    return {
-        ...item,
-        type: "recording"
-    };
+    // recording (FIXED)
+    if (item.id) {
+        return {
+            ...item,
+            type: "recording",
+            id: item.id
+        };
+    }
+
+    // HARD FAIL (prevents silent bad requests)
+    console.error("normalizeItem failed:", item);
+    return null;
 }
