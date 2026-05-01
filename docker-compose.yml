@@ -22,13 +22,6 @@ services:
     volumes:
       - ./backend:/app
 
-  frontend:
-    build: ./frontend
-    container_name: frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-
   nginx:
     image: nginx:latest
     container_name: nginx
