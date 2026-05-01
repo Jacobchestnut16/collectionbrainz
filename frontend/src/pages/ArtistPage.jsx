@@ -38,7 +38,7 @@ export default function ArtistPage() {
 
         const fetchArtist = async () => {
             const res = await axios.get(
-                `http://127.0.0.1:8000/id/artist/${id}`
+                `/api/id/artist/${id}`
             );
             setArtist(res.data);
         };
@@ -87,7 +87,7 @@ export default function ArtistPage() {
 
         const fetchTracks = async () => {
             const res = await axios.get(
-                `http://127.0.0.1:8000/id/release/${selectedRelease.release_id}`
+                `/api/id/release/${selectedRelease.release_id}`
             );
 
             const media = res.data.media || [];
