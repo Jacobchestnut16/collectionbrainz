@@ -2,6 +2,7 @@ import requests
 from fastapi import APIRouter, HTTPException
 
 from services.dashboard_service import norm_release, norm_listen
+from services.cache import cached
 
 router = APIRouter()
 
@@ -10,6 +11,7 @@ headers = {"User-Agent": "collectionbrainz/0.1"}
 
 
 @router.get("/user/history/{username}")
+@cached(lambda username: f"user_history:{username}", ttl=60)
 def get_user_history(username: str):
     path = f"/user/{username}/listens"
     url = BASE_URL + path
@@ -35,6 +37,7 @@ def get_user_history(username: str):
 
 
 @router.get("/sitewide/releases")
+@cached(lambda: "sitewide_releases", ttl=300)
 def get_sitewide_releases():
     url = BASE_URL + "/stats/sitewide/releases"
 
@@ -52,6 +55,7 @@ def get_sitewide_releases():
     }
 
 @router.get("/fresh-releases")
+@cached(lambda: "fresh_releases", ttl=120)
 def get_fresh_releases():
     url = BASE_URL + "/explore/fresh-releases"
 
@@ -70,6 +74,7 @@ def get_fresh_releases():
 
 
 @router.get("/user/top-albums/{username}")
+@cached(lambda username: f"user_top_albums:{username}", ttl=300)
 def get_user_top_albums(username: str):
     url = BASE_URL + f"/stats/user/{username}/releases"
 

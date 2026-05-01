@@ -1,6 +1,7 @@
 import requests
 from fastapi import APIRouter, HTTPException
 
+from services.cache import cached
 from services.musicbrainz import build_artist_payload
 
 router = APIRouter()
@@ -9,6 +10,7 @@ BASE_URL = "https://musicbrainz.org/ws/2"
 headers = {"User-Agent": "collectionbrainz/0.1"}
 
 @router.get("/artist/{artist_id}")
+@cached(lambda artist_id: f"artist:{artist_id}", ttl=3600)
 def get_artist(artist_id: str):
     try:
         return build_artist_payload(artist_id)
@@ -18,6 +20,7 @@ def get_artist(artist_id: str):
 
 
 @router.get("/release/{release_id}")
+@cached(lambda release_id: f"release:{release_id}", ttl=3600)
 def get_release(release_id: str):
     path = f"/release/{release_id}"
     url = BASE_URL + path
