@@ -1,19 +1,36 @@
 export function normalizeItem(item) {
-    if (!item) return null;
+    if (!item || typeof item !== "object") {
+        console.error("normalizeItem: invalid item", item);
+        return null;
+    }
 
-    // already normalized (must have BOTH)
-    if (item.type && item.id) return item;
+    // normalize known types ONLY if valid
+    if (item.type === "artist" && item.id) {
+        return { ...item, type: "artist", id: item.id };
+    }
 
-    // release
+    if (item.type === "release" && (item.release_id || item.id)) {
+        return {
+            ...item,
+            type: "release",
+            id: item.release_id || item.id
+        };
+    }
+
+    if (item.type === "recording" && item.id) {
+        return { ...item, type: "recording", id: item.id };
+    }
+
+    // infer release
     if (item.release_id || item.release_group_id) {
         return {
             ...item,
             type: "release",
-            id: item.release_group_id || item.release_id
+            id: item.release_id || item.release_group_id
         };
     }
 
-    // artist
+    // infer artist
     if (item.artist_id && !item.release_id) {
         return {
             ...item,
@@ -22,7 +39,7 @@ export function normalizeItem(item) {
         };
     }
 
-    // recording
+    // fallback to recording ONLY if id exists
     if (item.id) {
         return {
             ...item,
