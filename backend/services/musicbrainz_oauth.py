@@ -32,7 +32,6 @@ def get_userinfo(access_token: str):
         USERINFO_URL,
         headers={
             "Authorization": f"Bearer {access_token}",
-            "User-Agent": "CollectionBrainz/1.0 (e16.jmc@gmail.com)",
             "Accept": "application/json",
         },
         timeout=20
